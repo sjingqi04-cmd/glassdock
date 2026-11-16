@@ -46,7 +46,8 @@ public sealed class DockWindow : Window
         SizeToContent = SizeToContent.Manual;
         AllowDrop = true;
 
-        _bar = new Border { Child = _row, HorizontalAlignment = HorizontalAlignment.Center, Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)) };
+        // Viewbox shrinks the whole row when it is wider than the screen (many widgets on a small display).
+        _bar = new Border { Child = new Viewbox { Child = _row, StretchDirection = StretchDirection.DownOnly }, HorizontalAlignment = HorizontalAlignment.Center, Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)) };
         Content = new Grid { Children = { _bar } };
 
         _row.MouseMove += (_, e) => Magnify(e.GetPosition(_row).X);
@@ -64,7 +65,12 @@ public sealed class DockWindow : Window
             Win32.SetWindowLong(hwnd, Win32.GWL_EXSTYLE, (ex | Win32.WS_EX_TOOLWINDOW) & ~Win32.WS_EX_APPWINDOW);
             HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         };
-        Loaded += (_, _) => { _backdrop.Owner = this; _backdrop.Show(); Rebuild(); };
+        // The backdrop must sit BELOW the icons. An owned window always stays above its owner,
+        // so the icon overlay is owned by the backdrop (not the other way round).
+        _backdrop.Left = -10000; _backdrop.Top = -10000; _backdrop.Width = 1; _backdrop.Height = 1;
+        _backdrop.Show();
+        Owner = _backdrop;
+        Loaded += (_, _) => Rebuild();
         Closed += (_, _) => { UnregisterAppBar(); _backdrop.Close(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.Invoke(Position);
     }
@@ -221,6 +227,8 @@ public sealed class DockWindow : Window
     private static void OpenStartMenu() { keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero); }
 
     // ---------------- self-test hooks ----------------
+
+    internal double BarWidth => _bar.ActualWidth;
 
     internal void SelfTestMagnify() => Magnify(_row.ActualWidth / 2);
 
@@ -428,6 +436,7 @@ public sealed class DockWindow : Window
         double barH = _unit * 1.32;
         double winH = barH + _unit * (MaxScale - 1) + gap + 4;
 
+        _bar.MaxWidth = screenW - 24;
         Width = screenW;
         Height = winH;
         Left = 0;

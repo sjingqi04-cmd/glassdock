@@ -48,7 +48,14 @@ public static class TaskbarService
         if (OriginalState == null)
         {
             OriginalState = GetState();
-            if ((OriginalState.Value & ABS_AUTOHIDE) == 0) SetState(OriginalState.Value | ABS_AUTOHIDE);
+            if ((OriginalState.Value & ABS_AUTOHIDE) == 0)
+            {
+                SetState(OriginalState.Value | ABS_AUTOHIDE);
+                // explorer re-shows the bar asynchronously after the state change; hide again once it settles
+                var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+                t.Tick += (_, _) => { t.Stop(); if (OriginalState != null) foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_HIDE); };
+                t.Start();
+            }
         }
         foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_HIDE);
     }
@@ -129,7 +136,13 @@ public sealed class Heartbeat : IDisposable
         _mmf = MemoryMappedFile.CreateOrOpen(MapName, 16);
         _view = _mmf.CreateViewAccessor(0, 16);
         _timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _timer.Tick += (_, _) => Beat(hidden: App.Current.SettingsData.HideWindowsTaskbar);
+        _timer.Tick += (_, _) =>
+        {
+            bool hide = App.Current.SettingsData.HideWindowsTaskbar;
+            // Explorer re-shows the taskbar after an auto-hide change, a restart or a display change: keep it hidden.
+            if (hide && TaskbarService.IsVisible()) TaskbarService.Hide();
+            Beat(hidden: hide);
+        };
         _timer.Start();
         Beat(App.Current.SettingsData.HideWindowsTaskbar);
         StartWatchdog();

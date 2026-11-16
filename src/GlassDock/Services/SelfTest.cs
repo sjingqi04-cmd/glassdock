@@ -49,13 +49,15 @@ public static class SelfTest
             await Wait(4000);
             Check(dock.IsVisible, "dock window visible");
             Check(dock.ActualWidth > 0 && dock.ActualHeight > 0, $"dock has size {dock.ActualWidth}x{dock.ActualHeight}");
+            Check(dock.Owner != null, "icon overlay is owned by (so drawn above) the glass backdrop");
             Check(s.Entries.Any(e => e.Kind == "widget"), "default widgets present");
             Shot("01-default");
 
             var wa0 = SystemParameters.WorkArea;
             s.HideWindowsTaskbar = true; app.ApplyTaskbar();
-            await Wait(2500);
+            await Wait(3500);
             Check(!TaskbarService.IsVisible(), "taskbar hidden");
+            Check(SystemParameters.WorkArea.Height > wa0.Height, "work area reclaimed from taskbar");
             Log($"work area before {wa0}, after {SystemParameters.WorkArea}");
             Shot("02-taskbar-hidden");
 
@@ -90,6 +92,7 @@ public static class SelfTest
             await Wait(3000);
             Check(dock.IsVisible, "all widgets added");
             Shot("06-all-widgets");
+            Check(dock.BarWidth <= SystemParameters.PrimaryScreenWidth, $"dock fits on screen ({dock.BarWidth:0} <= {SystemParameters.PrimaryScreenWidth})");
 
             dock.SelfTestMagnify(); await Wait(500); Shot("07-magnify");
             dock.SelfTestOpenPopups(); await Wait(800); Shot("08-popups");
