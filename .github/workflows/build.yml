@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish (self-contained, x64, unzip-and-run)
+        shell: pwsh
+        run: |
+          dotnet publish src/GlassDock/GlassDock.csproj -c Release -r win-x64 --self-contained true -o out/GlassDock
+          dotnet publish src/GlassDock.Watchdog/GlassDock.Watchdog.csproj -c Release -r win-x64 --self-contained true -o out/GlassDock
+          Remove-Item out/GlassDock/*.pdb -ErrorAction SilentlyContinue
+          Copy-Item LICENSE, README.md out/GlassDock/
+          Compress-Archive -Path out/GlassDock -DestinationPath GlassDock-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GlassDock-win-x64
+          path: GlassDock-win-x64.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GlassDock-win-x64.zip
+          generate_release_notes: true
