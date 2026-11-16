@@ -57,11 +57,25 @@ public sealed class SystemStats
 /// <summary>Open-Meteo: free, no key, no account. Called directly from this PC.</summary>
 public static class WeatherService
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     public record Now(double TempC, int Code, double High, double Low);
 
-    public static async Task<Now?> GetAsync(double lat, double lon)
+    private static (double lat, double lon, DateTime at, Task<Now?> task)? _cache;
+    public static string? LastError { get; private set; }
+
+    /// <summary>Shared and cached for 15 min, so rebuilding the dock (style / size changes) never refetches.</summary>
+    public static Task<Now?> GetAsync(double lat, double lon)
+    {
+        if (_cache is { } c && c.lat == lat && c.lon == lon && DateTime.UtcNow - c.at < TimeSpan.FromMinutes(15)
+            && !(c.task.IsCompleted && c.task.Result == null))
+            return c.task;
+        var t = FetchAsync(lat, lon);
+        _cache = (lat, lon, DateTime.UtcNow, t);
+        return t;
+    }
+
+    private static async Task<Now?> FetchAsync(double lat, double lon)
     {
         try
         {
@@ -73,7 +87,7 @@ public static class WeatherService
             return new Now(cur.GetProperty("temperature_2m").GetDouble(), cur.GetProperty("weather_code").GetInt32(),
                 daily.GetProperty("temperature_2m_max")[0].GetDouble(), daily.GetProperty("temperature_2m_min")[0].GetDouble());
         }
-        catch { return null; }
+        catch (Exception e) { LastError = e.GetType().Name + ": " + e.Message; return null; }
     }
 
     public static (string icon, string text) Describe(int code) => code switch

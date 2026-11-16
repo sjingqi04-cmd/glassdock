@@ -52,6 +52,8 @@ public static class SelfTest
             Check(dock.Owner != null, "icon overlay is owned by (so drawn above) the glass backdrop");
             Check(s.Entries.Any(e => e.Kind == "widget"), "default widgets present");
             Shot("01-default");
+            var wx = await WeatherService.GetAsync(s.WeatherLat, s.WeatherLon);
+            Check(wx != null, wx != null ? $"weather {s.WeatherCity} {wx.TempC}°C code {wx.Code}" : $"weather failed: {WeatherService.LastError}");
 
             var wa0 = SystemParameters.WorkArea;
             s.HideWindowsTaskbar = true; app.ApplyTaskbar();
