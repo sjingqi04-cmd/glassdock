@@ -23,8 +23,43 @@ public static class TaskbarService
             yield return h;
     }
 
-    public static void Hide() { foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_HIDE); }
-    public static void Restore() { foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_SHOW); }
+    private const int ABM_GETSTATE = 4, ABM_SETSTATE = 10, ABS_AUTOHIDE = 1;
+    /// <summary>Taskbar auto-hide state before we touched it (null = untouched). Mirrored into the heartbeat so the watchdog can undo it.</summary>
+    public static int? OriginalState { get; private set; }
+
+    private static int GetState()
+    {
+        var abd = new Win32.APPBARDATA { cbSize = Marshal.SizeOf<Win32.APPBARDATA>() };
+        return (int)Win32.SHAppBarMessage(ABM_GETSTATE, ref abd);
+    }
+
+    public static void SetState(int state)
+    {
+        var abd = new Win32.APPBARDATA { cbSize = Marshal.SizeOf<Win32.APPBARDATA>(), hWnd = Win32.FindWindow("Shell_TrayWnd", null), lParam = (IntPtr)state };
+        Win32.SHAppBarMessage(ABM_SETSTATE, ref abd);
+    }
+
+    /// <summary>
+    /// Hiding the window alone leaves its reserved strip empty (work area does not grow), so we also switch the taskbar
+    /// to auto-hide while GlassDock runs and put the user's setting back on restore.
+    /// </summary>
+    public static void Hide()
+    {
+        if (OriginalState == null)
+        {
+            OriginalState = GetState();
+            if ((OriginalState.Value & ABS_AUTOHIDE) == 0) SetState(OriginalState.Value | ABS_AUTOHIDE);
+        }
+        foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_HIDE);
+    }
+
+    public static void Restore()
+    {
+        foreach (var h in TaskbarWindows()) Win32.ShowWindow(h, Win32.SW_SHOW);
+        if (OriginalState is { } st) { SetState(st); OriginalState = null; }
+    }
+
+    public static bool IsVisible() => Win32.IsWindowVisible(Win32.FindWindow("Shell_TrayWnd", null));
 }
 
 /// <summary>Real-time blur behind the window, done by DWM (GPU), so the app redraws nothing when the background changes.</summary>
@@ -106,6 +141,8 @@ public sealed class Heartbeat : IDisposable
         _view.Write(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         _view.Write(8, (byte)(hidden ? 1 : 0));
         _view.Write(9, (byte)0);
+        // [10] 0 = nothing to undo, else original appbar state + 1
+        _view.Write(10, (byte)(TaskbarService.OriginalState is { } st ? st + 1 : 0));
     }
 
     private void StartWatchdog()

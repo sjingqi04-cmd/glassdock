@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using GlassDock.Services;
 using GlassDock.Views;
@@ -19,8 +20,9 @@ public partial class App : Application
         if (!first) { Shutdown(); return; }
 
         // Any crash path restores the native taskbar first.
-        AppDomain.CurrentDomain.UnhandledException += (_, _) => TaskbarService.Restore();
-        DispatcherUnhandledException += (_, args) => { TaskbarService.Restore(); args.Handled = false; };
+        AppDomain.CurrentDomain.UnhandledException += (_, a) => { TaskbarService.Restore(); CrashLog(a.ExceptionObject); };
+        DispatcherUnhandledException += (_, args) => { TaskbarService.Restore(); CrashLog(args.Exception); args.Handled = false; };
+        TaskScheduler.UnobservedTaskException += (_, a) => { CrashLog(a.Exception); a.SetObserved(); };
 
         base.OnStartup(e);
         SettingsData = AppSettings.Load();
@@ -29,6 +31,17 @@ public partial class App : Application
         _dock = new DockWindow();
         _dock.Show();
         ApplyTaskbar();
+        if (e.Args.Contains("--selftest")) SelfTest.Run(_dock);
+    }
+
+    private static void CrashLog(object ex)
+    {
+        try
+        {
+            var dir = string.IsNullOrEmpty(AppSettings.DataDir) ? AppContext.BaseDirectory : AppSettings.DataDir;
+            System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "crash.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     public void ApplyTaskbar()

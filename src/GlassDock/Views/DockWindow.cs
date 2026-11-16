@@ -220,6 +220,19 @@ public sealed class DockWindow : Window
     [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     private static void OpenStartMenu() { keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero); }
 
+    // ---------------- self-test hooks ----------------
+
+    internal void SelfTestMagnify() => Magnify(_row.ActualWidth / 2);
+
+    internal void SelfTestOpenPopups()
+    {
+        foreach (FrameworkElement child in _row.Children)
+        {
+            if (child is CalendarWidget or TodoWidget || child.Tag is DockEntry { Kind: "folder" })
+                child.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
+        }
+    }
+
     // ---------------- magnification ----------------
 
     public static readonly DependencyProperty IsMagnifiableProperty =

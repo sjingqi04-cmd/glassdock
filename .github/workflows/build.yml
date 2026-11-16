@@ -28,6 +28,39 @@ jobs:
           Copy-Item LICENSE, README.md out/GlassDock/
           Compress-Archive -Path out/GlassDock -DestinationPath GlassDock-win-x64.zip
 
+      - name: Self-test on the runner desktop
+        shell: pwsh
+        run: |
+          Copy-Item out/GlassDock test -Recurse
+          Add-Type @"
+          using System; using System.Runtime.InteropServices;
+          public static class TB {
+            [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string w);
+            [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+          }
+          "@
+          $tb = [TB]::FindWindow("Shell_TrayWnd", $null)
+          "taskbar handle: $tb, visible before: $([TB]::IsWindowVisible($tb))"
+          $p = Start-Process test/GlassDock.exe -ArgumentList "--selftest" -PassThru
+          if (-not $p.WaitForExit(180000)) { "self-test timed out"; Stop-Process $p -Force }
+          Start-Sleep -Seconds 8
+          $visible = [TB]::IsWindowVisible($tb)
+          "taskbar visible after crash: $visible"
+          $dir = if (Test-Path test/data/selftest) { "test/data/selftest" } else { "$env:APPDATA/GlassDock/selftest" }
+          New-Item -ItemType Directory -Force selftest | Out-Null
+          Copy-Item "$dir/*" selftest/ -ErrorAction SilentlyContinue
+          Copy-Item test/data/crash.log selftest/ -ErrorAction SilentlyContinue
+          Get-Process GlassDock* -ErrorAction SilentlyContinue | Format-Table Name, Id
+          Get-Content selftest/selftest.log
+          if ($tb -ne [IntPtr]::Zero -and -not $visible) { "FAIL: watchdog did not restore the taskbar" | Tee-Object -Append selftest/selftest.log; exit 1 }
+          if (-not (Select-String -Path selftest/selftest.log -Pattern "RESULT PASS" -Quiet)) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest
+          path: selftest
+
       - uses: actions/upload-artifact@v4
         with:
           name: GlassDock-win-x64
